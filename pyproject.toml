@@ -1,0 +1,51 @@
+[build-system]
+requires = ["setuptools"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+py-modules = []
+
+[project]
+name = "ramces"
+version = "0.1.0"
+description = " RAnking Markers for CEll Segmentation."
+requires-python = ">=3.7"
+
+
+authors = [
+  {name = "Monica Dayao", email = "mdayao@andrew.cmu.edu"}
+]
+
+maintainers = [
+  {name = "Matthias Bruhns", email = "matthias.bruhns@posteo.de" }
+]
+
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+]
+
+dependencies = [
+    "torch>=1.12",
+    "torchvision",
+    "opencv-python",
+    "PyWavelets",
+    "tifffile",
+    "tqdm",
+    "numpy",
+    "pandas"
+]
+
+[project.optional-dependencies]
+dev = [
+    "black",
+    "flake8",
+    "pytest"
+]
+
+
+[tool.black]
+line-length = 88
+target-version = ["py310", "py311"]
+include = '\.pyi?$'
