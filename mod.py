@@ -1,25 +1,18 @@
-import argparse
-import os
-import re
-from pathlib import Path
 import logging
+import os
+from pathlib import Path
+
 import cv2
 import numpy as np
-import pandas as pd
 import pywt
 import tifffile
 import torch
 import torchvision.transforms.functional as TF
-from tqdm import tqdm
-from sys import exit
-import seaborn as sns
-import matplotlib.pyplot as plt
+
 from ramces_cnn import SimpleCNN
 
 
 class Ramces:
-    # Todo: Incorporate tifffile.memmap()
-
     def __init__(self, channels, model_path=None, device="cpu"):
         self.model_path = Path("models/trained_model.h5")
 
@@ -43,6 +36,7 @@ class Ramces:
 
         self.channels = channels
         self.number_channels = len(self.channels)
+
         self.marker_scores_raw = np.zeros(len(self.channels))
         self.marker_scores = np.zeros(len(self.channels))
 
@@ -50,7 +44,9 @@ class Ramces:
 
     def __repr__(self):
         channel_str = "channels: " + ", ".join(self.channels)
-        return f"- - - - - - \nRamces model\n{channel_str},\ndevide={self.device}"
+        return (
+            f"- - - - - - \nRamces model\n{channel_str},\ndevide={self.device}"
+        )
 
     def preprocess_image(self, im):
         im = cv2.resize(im, dsize=(1024, 1024))
@@ -91,16 +87,27 @@ class Ramces:
                 self.number_tiles += 1
 
         self.marker_scores = self.marker_scores_raw / self.number_tiles
+        self.top_markers = np.argsort(self.marker_scores)[::-1]
 
-    def create_pseudochannel(self, ims, top_weights, num_weighted=3):
-        weighted_num = (
-            top_weights[:num_weighted, 0, None, None] * ims[..., :num_weighted]
-        ).sum(axis=-1)
-        weighted_norm = top_weights[:num_weighted, 0].sum()
-        weighted_im = weighted_num / weighted_norm
-        weighted_im = weighted_im.astype(ims.dtype)
+    def create_pseudochannel(self, im, num_weighted=3, mode="sum"):
+        top_weights = self.marker_scores[self.top_markers][:num_weighted]
+        top_images = im[:, :, self.top_markers][:, :, :num_weighted]
 
-        pass
+        if mode == "sum":
+            top_weights /= top_weights.sum()
+            print(top_weights.sum())
+        elif mode == "softmax":
+            top_weights = np.exp(top_weights) / np.sum(np.exp(top_weights))
+        elif mode == "log":
+            top_weights = np.log(top_weights) / np.sum(np.log(top_weights))
+        else:
+            raise ValueError(
+                "Invalid mode selected. Mode must be either sum,\
+                softmax or log."
+            )
+
+        weighted_im = (top_images * top_weights).sum(axis=-1)
+        return weighted_im
 
 
 def main():
@@ -119,10 +126,7 @@ def main():
         channels=channels,
     )
 
-    # out = ram.preprocess_image(img)
     ram.rank_markers(img)
-    #sorted_idx = np.argsort(marker_scores)[::-1]
-    #print(sorted_idx)
 
 
 if __name__ == "__main__":
