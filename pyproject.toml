@@ -46,6 +46,6 @@ dev = [
 
 
 [tool.black]
-line-length = 88
+line-length = 79
 target-version = ["py310", "py311"]
 include = '\.pyi?$'

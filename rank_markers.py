@@ -123,7 +123,9 @@ def main():
 
     args = parser.parse_args()
 
-    if args.create_images and (not args.num_weighted or not args.output_weighted):
+    if args.create_images and (
+        not args.num_weighted or not args.output_weighted
+    ):
         parser.error(
             "The --create-images argument requires the --num-weighted and the --output-weighted arguments to be specified."
         )
@@ -164,7 +166,9 @@ def main():
         marker_scores = np.zeros((num_markers, 2))
 
         # image_list = sorted(os.listdir(args.data_dir))
-        image_list = sorted([file.name for file in Path(args.data_dir).iterdir()])
+        image_list = sorted(
+            [file.name for file in Path(args.data_dir).iterdir()]
+        )
 
         pat_t = re.compile("(?:t)(...)")
         pat_c = re.compile("(?:c)(...)")
@@ -179,7 +183,9 @@ def main():
             for i, image_file in enumerate(
                 tqdm(image_list, desc="Ranking proteins", unit="proteins")
             ):
-                t = int(re.findall(pat_t, image_file)[0])  # cycle number, starts from 1
+                t = int(
+                    re.findall(pat_t, image_file)[0]
+                )  # cycle number, starts from 1
                 c = int(
                     re.findall(pat_c, image_file)[0]
                 )  # channel number, starts from 1
@@ -196,7 +202,9 @@ def main():
                 im = preprocessImage(im)
 
                 with torch.inference_mode():
-                    output = model(im.view(-1, 4, 128, 128).type("torch.FloatTensor"))
+                    output = model(
+                        im.view(-1, 4, 128, 128).type("torch.FloatTensor")
+                    )
 
                 marker_scores[score_idx, 0] += output.max()
                 marker_scores[score_idx, 1] += 1
@@ -209,7 +217,9 @@ def main():
                     tile_marker_scores = np.zeros(num_markers)
                 c_iloc = tif_shape.index(args.num_channels_per_cycle)
                 t_iloc = tif_shape.index(args.num_cycles)
-                full_im = tifffile.imread(os.path.join(args.data_dir, image_file))
+                full_im = tifffile.imread(
+                    os.path.join(args.data_dir, image_file)
+                )
                 for t in range(args.num_cycles):
                     for c in range(args.num_channels_per_cycle):
                         marker_idx = (t) * args.num_channels_per_cycle + (c)
@@ -234,7 +244,9 @@ def main():
 
                         with torch.inference_mode():
                             output = model(
-                                im.view(-1, 4, 128, 128).type("torch.FloatTensor")
+                                im.view(-1, 4, 128, 128).type(
+                                    "torch.FloatTensor"
+                                )
                             )
 
                         marker_scores[score_idx, 0] += output.max()
@@ -256,8 +268,10 @@ def main():
         score_dict = {
             "Marker": ch_boolean[marker_indices[sorted_idx], 0],
             "Score": marker_scores[sorted_idx, 0],
-            "Cycle": marker_indices[sorted_idx] // args.num_channels_per_cycle + 1,
-            "Channel": marker_indices[sorted_idx] % args.num_channels_per_cycle + 1,
+            "Cycle": marker_indices[sorted_idx] // args.num_channels_per_cycle
+            + 1,
+            "Channel": marker_indices[sorted_idx] % args.num_channels_per_cycle
+            + 1,
         }
         score_df = pd.DataFrame(data=score_dict)
         score_df.to_csv(args.rank_path, index=False)
@@ -266,7 +280,10 @@ def main():
         # Ranking is already calculated
         score_df = pd.read_csv(args.rank_path)
         reverse_indices = np.array(
-            [list(ch_boolean[:, 0]).index(i) for i in score_df["Marker"].values]
+            [
+                list(ch_boolean[:, 0]).index(i)
+                for i in score_df["Marker"].values
+            ]
         )
         sorted_idx = np.argsort(np.argsort(reverse_indices))
 
@@ -281,22 +298,32 @@ def main():
 
         if args.exclude is not None:
             sorted_idx = np.delete(sorted_idx, np.array(args.exclude) - 1)
-        for i, idx in enumerate(marker_indices[sorted_idx[: args.num_weighted]]):
+        for i, idx in enumerate(
+            marker_indices[sorted_idx[: args.num_weighted]]
+        ):
             cyc_num = (idx // args.num_channels_per_cycle) + 1
             ch_num = (idx % args.num_channels_per_cycle) + 1
-            top_weights[i, :] = np.array([score_df.iloc[i, 1], cyc_num, ch_num])
+            top_weights[i, :] = np.array(
+                [score_df.iloc[i, 1], cyc_num, ch_num]
+            )
 
-        image_list = sorted([file.name for file in Path(args.data_dir).iterdir()])
+        image_list = sorted(
+            [file.name for file in Path(args.data_dir).iterdir()]
+        )
 
         pat_t = re.compile("(?:t)(...)")
         pat_c = re.compile("(?:c)(...)")
 
-        with tifffile.TiffFile(os.path.join(args.data_dir, image_list[0])) as tif:
+        with tifffile.TiffFile(
+            os.path.join(args.data_dir, image_list[0])
+        ) as tif:
             tif_shape = tif.pages[0].shape
 
         # Each individual tif file is a separate marker image
         if len(tif_shape) == 2:
-            req_pat = re.compile("(t\d{3}.c\d{3}|c\d{3}.t\d{3})", flags=re.IGNORECASE)
+            req_pat = re.compile(
+                "(t\d{3}.c\d{3}|c\d{3}.t\d{3})", flags=re.IGNORECASE
+            )
             tc_pat = re.findall(req_pat, image_list[0])[0]
             # _, tif_ext = os.path.splitext(image_list[0])
 
@@ -314,7 +341,9 @@ def main():
                 output_weighted_path.mkdir(parents=True, exist_ok=True)
 
             tile_ids = list(set(tile_ids))
-            for tile_id in tqdm(tile_ids, desc="Saving weighted images", unit="images"):
+            for tile_id in tqdm(
+                tile_ids, desc="Saving weighted images", unit="images"
+            ):
                 paths = []
                 for marker_i in range(args.num_weighted):
                     t = int(top_weights[marker_i, 1])
@@ -325,12 +354,16 @@ def main():
                     paths.append(f"{tile_id}{tc_pat}{tif_ext}")
 
                 ims = [
-                    tifffile.imread(os.path.join(args.data_dir, path)) for path in paths
+                    tifffile.imread(os.path.join(args.data_dir, path))
+                    for path in paths
                 ]
 
                 weighted_num = np.sum(
                     np.array(
-                        [top_weights[i, 0] * ims[i] for i in range(args.num_weighted)]
+                        [
+                            top_weights[i, 0] * ims[i]
+                            for i in range(args.num_weighted)
+                        ]
                     ),
                     0,
                 )
@@ -356,7 +389,9 @@ def main():
                 tqdm(image_list, desc="Ranking proteins", unit="proteins")
             ):
                 tile_id = image_file.split(".")[0]
-                full_im = tifffile.imread(os.path.join(args.data_dir, image_file))
+                full_im = tifffile.imread(
+                    os.path.join(args.data_dir, image_file)
+                )
                 indiv_ims = [None] * args.num_weighted
                 for marker_i in range(args.num_weighted):
                     t = int(top_weights[marker_i, 1])
