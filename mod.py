@@ -12,7 +12,8 @@ import torch
 import torchvision.transforms.functional as TF
 from tqdm import tqdm
 from sys import exit
-
+import seaborn as sns
+import matplotlib.pyplot as plt
 from ramces_cnn import SimpleCNN
 
 
@@ -23,6 +24,7 @@ class Ramces:
         self.model_path = Path("models/trained_model.h5")
 
         self.model = SimpleCNN((128, 128))
+        self.model = self.model.eval()
 
         try:
             self.device = device
@@ -93,17 +95,15 @@ class Ramces:
 
 
 def main():
-    n_channel = 10
+    n_channel = 5
     img = np.zeros((1024, 1024, n_channel))
     for i in range(1, n_channel):
         img[:, :, i] = tifffile.imread(
             f"LHCC35_small/data/LHCC35_0001_t00{i}_c001.tif"
         )
     ram = Ramces(device="mps")
-    score, tile = ram.rank_markers(img)
-    sorted_idx = np.argsort(score[:, 0])[::-1]
-    print(score)
-
-
+    #out = ram.preprocess_image(img)
+    marker_scores, tile_marker_scores = ram.rank_markers(img)
+    print(tile_marker_scores)
 if __name__ == "__main__":
     main()
