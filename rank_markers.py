@@ -358,6 +358,7 @@ def main():
                     for path in paths
                 ]
 
+                """
                 weighted_num = np.sum(
                     np.array(
                         [
@@ -371,6 +372,15 @@ def main():
 
                 weighted_im = weighted_num / weighted_norm
                 weighted_im = np.asarray(weighted_im, dtype=ims[0].dtype)
+                """
+
+                weighted_num = (
+                    top_weights[: args.num_weighted, 0, None, None]
+                    * ims[: args.num_weighted]
+                ).sum(axis=0)
+                weighted_norm = top_weights[: args.num_weighted, 0].sum()
+                weighted_im = weighted_num / weighted_norm
+                weighted_im = weighted_im.astype(ims[0].dtype)
 
                 weighted_path = os.path.join(
                     args.output_weighted, f"{tile_id}weighted{tif_ext}"
