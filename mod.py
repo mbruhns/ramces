@@ -20,11 +20,10 @@ from ramces_cnn import SimpleCNN
 class Ramces:
     # Todo: Incorporate tifffile.memmap()
 
-    def __init__(self, model_path=None, channels=None, device="cpu"):
+    def __init__(self, channels, model_path=None, device="cpu"):
         self.model_path = Path("models/trained_model.h5")
 
         self.model = SimpleCNN((128, 128))
-        self.model = self.model.eval()
 
         try:
             self.device = device
@@ -40,13 +39,18 @@ class Ramces:
                 torch.load(self.model_path, map_location=self.device)
             )
 
-        if channels is None:
-            channels = []
+        self.model = self.model.eval()
 
         self.channels = channels
+        self.number_channels = len(self.channels)
+        self.marker_scores_raw = np.zeros(len(self.channels))
+        self.marker_scores = np.zeros(len(self.channels))
+
+        self.number_tiles = 0
 
     def __repr__(self):
-        return f"Ramces model, channels={self.channels}, devide={self.device}"
+        channel_str = "channels: " + ", ".join(self.channels)
+        return f"- - - - - - \nRamces model\n{channel_str},\ndevide={self.device}"
 
     def preprocess_image(self, im):
         im = cv2.resize(im, dsize=(1024, 1024))
@@ -74,36 +78,52 @@ class Ramces:
 
     def rank_markers(self, im):
         num_markers = im.shape[-1]
-        tile_marker_scores = np.zeros(num_markers)
-        marker_scores = np.zeros((num_markers, 2))
+        assert num_markers == self.number_channels
 
         with torch.inference_mode():
-            for i in range(num_markers):
+            for i in range(self.number_channels):
                 im_proc = self.preprocess_image(im[:, :, i])
                 output = self.model(
                     im_proc.view(-1, 4, 128, 128).type("torch.FloatTensor")
                 )
 
-                marker_scores[i, 0] += output.max()
-                marker_scores[i, 1] += 1
-                tile_marker_scores[i] = output.max()
+                self.marker_scores_raw[i] += output.max()
+                self.number_tiles += 1
 
-        # Todo: Replace this by using num_markers
-        marker_scores[:, 0] /= marker_scores[:, 1]
+        self.marker_scores = self.marker_scores_raw / self.number_tiles
 
-        return marker_scores, tile_marker_scores
+    def create_pseudochannel(self, ims, top_weights, num_weighted=3):
+        weighted_num = (
+            top_weights[:num_weighted, 0, None, None] * ims[..., :num_weighted]
+        ).sum(axis=-1)
+        weighted_norm = top_weights[:num_weighted, 0].sum()
+        weighted_im = weighted_num / weighted_norm
+        weighted_im = weighted_im.astype(ims.dtype)
+
+        pass
 
 
 def main():
-    n_channel = 5
-    img = np.zeros((1024, 1024, n_channel))
-    for i in range(1, n_channel):
-        img[:, :, i] = tifffile.imread(
-            f"LHCC35_small/data/LHCC35_0001_t00{i}_c001.tif"
-        )
-    ram = Ramces(device="mps")
-    #out = ram.preprocess_image(img)
-    marker_scores, tile_marker_scores = ram.rank_markers(img)
-    print(tile_marker_scores)
+    directory_path = "demo/data/"
+    tif_files = [f for f in os.listdir(directory_path) if f.endswith(".tif")]
+    tif_files.sort()
+
+    images = [
+        tifffile.imread(os.path.join(directory_path, f)) for f in tif_files
+    ]
+    img = np.stack(images, axis=-1)
+    channels = ["c" + f"{i}".zfill(3) for i in range(len(images))]
+
+    ram = Ramces(
+        device="mps",
+        channels=channels,
+    )
+
+    # out = ram.preprocess_image(img)
+    ram.rank_markers(img)
+    #sorted_idx = np.argsort(marker_scores)[::-1]
+    #print(sorted_idx)
+
+
 if __name__ == "__main__":
     main()
