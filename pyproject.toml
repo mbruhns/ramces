@@ -31,7 +31,6 @@ dependencies = [
     "torchvision",
     "opencv-python",
     "PyWavelets",
-    "tifffile",
     "tqdm",
     "numpy",
     "pandas"
@@ -47,5 +46,5 @@ dev = [
 
 [tool.black]
 line-length = 79
-target-version = ["py310", "py311"]
-include = '\.pyi?$'
+target-version = ["py37", "py38", "py39", "py310", "py311"]
+include = "\.pyi?$"
