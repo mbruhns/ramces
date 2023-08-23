@@ -4,21 +4,19 @@ from pathlib import Path
 
 import cv2
 import numpy as np
+import pandas as pd
 import pywt
 import tifffile
 import torch
 import torchvision.transforms.functional as TF
 from tqdm import tqdm
+
 from ramces_cnn import SimpleCNN
-import pandas as pd
 
 
 class Ramces:
-    def __init__(
-        self, channels: list, model_path: Path = None, device: str = "cpu"
-    ):
+    def __init__(self, channels: list, device: str = "cpu") -> None:
         self.model_path = Path("models/trained_model.h5")
-
         self.model = SimpleCNN((128, 128))
 
         try:
@@ -51,7 +49,7 @@ class Ramces:
             f"- - - - - - \nRamces model\n{channel_str},\ndevice={self.device}"
         )
 
-    def preprocess_image(self, im: np.array):
+    def preprocess_image(self, im: np.array) -> np.array:
         im = cv2.resize(im, dsize=(1024, 1024))
 
         im_std = np.std(im)
@@ -75,7 +73,7 @@ class Ramces:
 
         return im
 
-    def rank_markers(self, im: np.array):
+    def rank_markers(self, im: np.array) -> None:
         num_markers = im.shape[-1]
         assert num_markers == self.number_channels
 
@@ -96,7 +94,9 @@ class Ramces:
         self.marker_scores = self.marker_scores_raw / self.number_tiles
         self.top_markers = np.argsort(self.marker_scores)[::-1]
 
-    def create_pseudochannel(self, im: np.array, num_weighted: int = 3):
+    def create_pseudochannel(
+        self, im: np.array, num_weighted: int = 3
+    ) -> np.array:
         top_weights = self.marker_scores[self.top_markers[:num_weighted]]
         top_images = im[:, :, self.top_markers[:num_weighted]]
 
@@ -106,7 +106,7 @@ class Ramces:
 
         return weighted_im
 
-    def ranking_table(self):
+    def ranking_table(self) -> pd.DataFrame:
         df = pd.DataFrame(
             {"Markers": self.channels, "Scores": self.marker_scores}
         )
