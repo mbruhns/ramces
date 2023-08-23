@@ -170,6 +170,8 @@ def main():
             [file.name for file in Path(args.data_dir).iterdir()]
         )
 
+        print(image_list)
+
         pat_t = re.compile("(?:t)(...)")
         pat_c = re.compile("(?:c)(...)")
 
@@ -352,13 +354,11 @@ def main():
                     tc_pat = re.sub(r"(?:c)(\d{3})", f"c{c:03d}", tc_pat)
 
                     paths.append(f"{tile_id}{tc_pat}{tif_ext}")
-
                 ims = [
                     tifffile.imread(os.path.join(args.data_dir, path))
                     for path in paths
                 ]
 
-                """
                 weighted_num = np.sum(
                     np.array(
                         [
@@ -368,12 +368,13 @@ def main():
                     ),
                     0,
                 )
+                print(ims[0])
                 weighted_norm = np.sum(top_weights[:, 0])
 
                 weighted_im = weighted_num / weighted_norm
                 weighted_im = np.asarray(weighted_im, dtype=ims[0].dtype)
-                """
 
+                """
                 weighted_num = (
                     top_weights[: args.num_weighted, 0, None, None]
                     * ims[: args.num_weighted]
@@ -381,7 +382,10 @@ def main():
                 weighted_norm = top_weights[: args.num_weighted, 0].sum()
                 weighted_im = weighted_num / weighted_norm
                 weighted_im = weighted_im.astype(ims[0].dtype)
+                print(weighted_im)
 
+                
+                """
                 weighted_path = os.path.join(
                     args.output_weighted, f"{tile_id}weighted{tif_ext}"
                 )
@@ -426,7 +430,6 @@ def main():
 
                 weighted_im = weighted_num / weighted_norm
                 weighted_im = np.asarray(weighted_im, dtype=indiv_ims[0].dtype)
-
                 weighted_path = os.path.join(
                     args.output_weighted, f"{tile_id}weighted{tif_ext}"
                 )

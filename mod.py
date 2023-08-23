@@ -8,12 +8,15 @@ import pywt
 import tifffile
 import torch
 import torchvision.transforms.functional as TF
-
+from tqdm import tqdm
 from ramces_cnn import SimpleCNN
+import pandas as pd
 
 
 class Ramces:
-    def __init__(self, channels, model_path=None, device="cpu"):
+    def __init__(
+        self, channels: list, model_path: Path = None, device: str = "cpu"
+    ):
         self.model_path = Path("models/trained_model.h5")
 
         self.model = SimpleCNN((128, 128))
@@ -45,10 +48,10 @@ class Ramces:
     def __repr__(self):
         channel_str = "channels: " + ", ".join(self.channels)
         return (
-            f"- - - - - - \nRamces model\n{channel_str},\ndevide={self.device}"
+            f"- - - - - - \nRamces model\n{channel_str},\ndevice={self.device}"
         )
 
-    def preprocess_image(self, im):
+    def preprocess_image(self, im: np.array):
         im = cv2.resize(im, dsize=(1024, 1024))
 
         im_std = np.std(im)
@@ -72,42 +75,44 @@ class Ramces:
 
         return im
 
-    def rank_markers(self, im):
+    def rank_markers(self, im: np.array):
         num_markers = im.shape[-1]
         assert num_markers == self.number_channels
 
         with torch.inference_mode():
-            for i in range(self.number_channels):
+            for i in tqdm(
+                range(self.number_channels),
+                desc="Ranking proteins",
+                bar_format="{l_bar}{bar}|{n_fmt}/{total_fmt}",
+            ):
                 im_proc = self.preprocess_image(im[:, :, i])
                 output = self.model(
                     im_proc.view(-1, 4, 128, 128).type("torch.FloatTensor")
                 )
 
                 self.marker_scores_raw[i] += output.max()
-                self.number_tiles += 1
 
+        self.number_tiles += 1
         self.marker_scores = self.marker_scores_raw / self.number_tiles
         self.top_markers = np.argsort(self.marker_scores)[::-1]
 
-    def create_pseudochannel(self, im, num_weighted=3, mode="sum"):
-        top_weights = self.marker_scores[self.top_markers][:num_weighted]
-        top_images = im[:, :, self.top_markers][:, :, :num_weighted]
+    def create_pseudochannel(self, im: np.array, num_weighted: int = 3):
+        top_weights = self.marker_scores[self.top_markers[:num_weighted]]
+        top_images = im[:, :, self.top_markers[:num_weighted]]
 
-        if mode == "sum":
-            top_weights /= top_weights.sum()
-            print(top_weights.sum())
-        elif mode == "softmax":
-            top_weights = np.exp(top_weights) / np.sum(np.exp(top_weights))
-        elif mode == "log":
-            top_weights = np.log(top_weights) / np.sum(np.log(top_weights))
-        else:
-            raise ValueError(
-                "Invalid mode selected. Mode must be either sum,\
-                softmax or log."
-            )
-
+        top_weights /= top_weights.sum()
         weighted_im = (top_images * top_weights).sum(axis=-1)
+        weighted_im = np.asarray(weighted_im, dtype=im.dtype)
+
         return weighted_im
+
+    def ranking_table(self):
+        df = pd.DataFrame(
+            {"Markers": self.channels, "Scores": self.marker_scores}
+        )
+
+        df = df.sort_values(by="Scores", ascending=False)
+        return df
 
 
 def main():
@@ -115,18 +120,18 @@ def main():
     tif_files = [f for f in os.listdir(directory_path) if f.endswith(".tif")]
     tif_files.sort()
 
+    channels = pd.read_csv("demo/channels.csv", header=None)[0].to_list()
+
     images = [
         tifffile.imread(os.path.join(directory_path, f)) for f in tif_files
     ]
     img = np.stack(images, axis=-1)
-    channels = ["c" + f"{i}".zfill(3) for i in range(len(images))]
 
-    ram = Ramces(
-        device="mps",
-        channels=channels,
-    )
-
+    ram = Ramces(device="mps", channels=channels)
+    print(ram)
+    # Testing
     ram.rank_markers(img)
+    ram.create_pseudochannel(img)
 
 
 if __name__ == "__main__":
