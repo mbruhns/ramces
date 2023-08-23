@@ -1,12 +1,10 @@
 import logging
-import os
 from pathlib import Path
 
 import cv2
 import numpy as np
 import pandas as pd
 import pywt
-import tifffile
 import torch
 import torchvision.transforms.functional as TF
 from tqdm import tqdm
@@ -16,7 +14,7 @@ from ramces_cnn import SimpleCNN
 
 class Ramces:
     def __init__(self, channels: list, device: str = "cpu") -> None:
-        self.model_path = Path("models/trained_model.h5")
+        self.model_path = Path("../models/trained_model.h5")
         self.model = SimpleCNN((128, 128))
 
         try:
@@ -26,7 +24,7 @@ class Ramces:
             )
         except RuntimeError:
             logging.warning(
-                f"No {self.device} device detected. Falling back to CPU."
+                "No %sdevice detected. Falling back to CPU.", self.device
             )
             self.device = "cpu"
             self.model.load_state_dict(
@@ -40,6 +38,7 @@ class Ramces:
 
         self.marker_scores_raw = np.zeros(len(self.channels))
         self.marker_scores = np.zeros(len(self.channels))
+        self.top_markers = None
 
         self.number_tiles = 0
 
@@ -113,26 +112,3 @@ class Ramces:
 
         df = df.sort_values(by="Scores", ascending=False)
         return df
-
-
-def main():
-    directory_path = "demo/data/"
-    tif_files = [f for f in os.listdir(directory_path) if f.endswith(".tif")]
-    tif_files.sort()
-
-    channels = pd.read_csv("demo/channels.csv", header=None)[0].to_list()
-
-    images = [
-        tifffile.imread(os.path.join(directory_path, f)) for f in tif_files
-    ]
-    img = np.stack(images, axis=-1)
-
-    ram = Ramces(device="mps", channels=channels)
-    print(ram)
-    # Testing
-    ram.rank_markers(img)
-    ram.create_pseudochannel(img)
-
-
-if __name__ == "__main__":
-    main()
