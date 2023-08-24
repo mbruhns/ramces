@@ -1,4 +1,6 @@
 import logging
+import time
+from functools import wraps
 from pathlib import Path
 
 import cv2
@@ -7,9 +9,8 @@ import pandas as pd
 import pywt
 import torch
 import torchvision.transforms.functional as TF
+from network import SimpleCNN
 from tqdm import tqdm
-
-from .network import SimpleCNN
 
 
 class Ramces:
@@ -166,7 +167,7 @@ class Ramces:
 
         return im
 
-    def rank_markers(self, im: np.array) -> None:
+    def rank_markers_multi_channel(self, im: np.array) -> None:
         """
         Ranks the markers in an image.
         :param im:
@@ -182,16 +183,14 @@ class Ramces:
         >>> from ramces import Ramces
         >>> ramces = Ramces(["DAPI", "CD3", "CD8", "CD20", "CD68"])
         >>> im = np.random.randint(0, 255, (1024, 1024, 5))
-        >>> ramces.rank_markers(im)
+        >>> ramces.rank_markers_multi_channel(im)
         """
-        num_markers = im.shape[-1]
-        assert num_markers == self.number_channels
-
         with torch.inference_mode():
             for i in tqdm(
                 range(self.number_channels),
                 desc="Ranking proteins",
                 bar_format="{l_bar}{bar}|{n_fmt}/{total_fmt}",
+                disable=True,
             ):
                 im_proc = self.preprocess_image(im[:, :, i])
                 output = self.model(
@@ -203,6 +202,24 @@ class Ramces:
         self.number_tiles += 1
         self.marker_scores = self.marker_scores_raw / self.number_tiles
         self.top_markers = np.argsort(self.marker_scores)[::-1]
+
+    def rank_markers_tensor(self, im: np.array) -> None:
+        assert len(im.shape) == 4, "Wrong dimensions!"
+        num_images, _, _, num_markers = im.shape
+
+        for marker_idx in range(num_markers):
+            for image_idx in range(num_images):
+                with torch.inference_mode():
+                    im_proc = self.preprocess_image(
+                        im[image_idx, :, :, marker_idx]
+                    )
+                    output = self.model(
+                        im_proc.view(-1, 4, 128, 128).type("torch.FloatTensor")
+                    )
+                    self.marker_scores_raw[marker_idx] += output.max()
+            self.marker_scores[marker_idx] = (
+                self.marker_scores_raw[marker_idx] / num_images
+            )
 
     def create_pseudochannel(
         self, im: np.array, num_weighted: int = 3
@@ -266,3 +283,38 @@ class Ramces:
 
         df = df.sort_values(by="Scores", ascending=False)
         return df
+
+
+def main():
+    number_channels = 10
+    rng = np.random.default_rng(0)
+    img = rng.integers(
+        low=0, high=256, size=(1, 1024, 1024, number_channels), dtype=np.uint16
+    )
+
+    channels = [str(i) for i in range(number_channels)]
+
+    ram_tensor = Ramces(channels=channels)
+    print(10 * "- ")
+    print("Tensor")
+    ram_tensor.rank_markers_tensor(img)
+
+    ram_multi = Ramces(channels=channels)
+    print(10 * "- ")
+    print("Multi")
+    ram_multi.rank_markers_tensor(img)
+
+    np.testing.assert_array_equal(
+        ram_tensor.ranking_table(), ram_multi.ranking_table()
+    )
+
+
+if __name__ == "__main__":
+    main()
+
+
+"""
+  Markers    Scores
+1    CD45  0.021567
+0    DAPI  0.017818
+"""
