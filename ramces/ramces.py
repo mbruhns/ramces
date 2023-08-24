@@ -27,7 +27,7 @@ class Ramces:
     ----------
     model_path : pathlib.Path
         Path to the trained model.
-    model : ramces.ramces_cnn.SimpleCNN
+    model : ramces.network.SimpleCNN
         Trained model.
     device : str
         Device used for inference.
@@ -52,7 +52,6 @@ class Ramces:
         Preprocesses an image.
     rank_markers(im)
         Ranks the markers in an image.
-
     create_pseudochannel(im)
         Creates a pseudochannel from the top markers.
     ranking_table()
