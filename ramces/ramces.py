@@ -9,7 +9,7 @@ import torch
 import torchvision.transforms.functional as TF
 from tqdm import tqdm
 
-from ramces_cnn import SimpleCNN
+from .ramces_cnn import SimpleCNN
 
 
 class Ramces:
