@@ -1,2 +1,2 @@
 from .ramces import Ramces
-from .ramces_cnn import SimpleCNN
+from .network import SimpleCNN
