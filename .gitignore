@@ -143,3 +143,4 @@ dmypy.json
 
 *.h5ad
 *.tif
+demo/
