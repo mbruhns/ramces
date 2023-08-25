@@ -288,7 +288,7 @@ class Ramces:
         self.top_markers = np.argsort(self.marker_scores)[::-1]
 
     def create_pseudochannel(
-        self, im: np.array, num_weighted: int = 3
+        self, im: np.array, num_weighted: int = 3, mode: str = "ramces"
     ) -> np.array:
         """
         Creates a pseudochannel from the top markers.
@@ -311,11 +311,14 @@ class Ramces:
         >>> ramces.create_pseudochannel(im).shape
         (1024, 1024)
         """
-        top_weights = self.marker_scores[self.top_markers[:num_weighted]]
+        if mode == "ramces":
+            top_weights = self.marker_scores[self.top_markers[:num_weighted]]
+            top_weights /= top_weights.sum()
+        elif mode == "uniform":
+            top_weights = np.ones(num_weighted) / num_weighted
         # Todo: check this
         top_images = im[:, :, :, self.top_markers[:num_weighted]]
 
-        top_weights /= top_weights.sum()
         weighted_im = (top_images * top_weights).sum(axis=-1)
         weighted_im = np.asarray(weighted_im, dtype=im.dtype)
 
@@ -353,10 +356,6 @@ class Ramces:
 
 
 def main():
-    # path_lst = sorted(
-    #    [e for e in Path("data").iterdir() if e.suffix == ".tif"]
-    # )
-
     """
     stacked_tiles = np.empty((19 * 20, 1024, 1024, len(path_lst)))
     for idx, img_path in enumerate(path_lst):
@@ -367,14 +366,66 @@ def main():
     sub_tiles = stacked_tiles[:5]
     """
 
-    image = tifffile.imread(
-        "/Users/matthias/github/segError/data/manual_seg/CRC_Day_4_R1_WC_ROI2_all_markers.ome_4700_5700_4400_5400.ome.tif"
+    path_lst = sorted(
+        [
+            e
+            for e in Path(
+                "/Users/matthias/github/segError/data/raw_codex/LHCC35/"
+            ).iterdir()
+            if e.suffix == ".tif"
+        ]
     )
-    image = np.moveaxis(image, 0, -1)
 
-    image = np.pad(
-        image, pad_width=((12, 12), (12, 12), (0, 0)), mode="reflect"
-    )
+    channels = [str(e).split("_")[4][:-4] for e in path_lst]
+    ram_tensor = Ramces(channels=channels, device="mps")
+
+    start_x = 5_000
+    start_y = 5_000
+    offset = 1024
+
+    full_img = np.zeros((1, 1024, 1024, len(channels)))
+
+    for idx, file in enumerate(path_lst):
+        img = tifffile.imread(file, key=0)
+        img = img[start_x : start_x + offset, start_y : start_y + offset]
+        full_img[0, :, :, idx] = img
+
+    ram = Ramces(channels=channels, device="mps")
+    ram.rank_markers_batch(full_img)
+    table = ram.ranking_table()
+    print(table)
+    pseudo_channel = ram.create_pseudochannel(full_img, num_weighted=5, mode="uniform")
+
+    comp_markers = table.head(5).index.to_list()
+
+    fig, ax = plt.subplots(2, 3, figsize=(16, 9))
+    ax = ax.ravel()
+
+    if False:
+        for i in range(len(channels)):
+            m = full_img[0, :, :, i].max()
+            full_img[0, :, :, i] /= m
+
+    for idx, e in enumerate(comp_markers):
+        ax[idx].imshow(full_img[0, :, :, e], cmap="gray")
+        ax[idx].axis("off")
+        ax[idx].set_title(idx)
+
+    ax[5].imshow(pseudo_channel, cmap="gray")
+    ax[5].axis("off")
+    ax[5].set_title(5)
+
+    plt.suptitle("Marker comparison")
+    plt.savefig("LHCC35_comp.pdf", dpi=300, bbox_inches="tight")
+    plt.close()
+
+    exit()
+
+    # image = np.moveaxis(image, 0, -1)
+
+    # image = np.pad(
+    #    image, pad_width=((12, 12), (12, 12), (0, 0)), mode="reflect"
+    # )
 
     image = np.expand_dims(image, axis=0)
     channels = [str(i) for i in range(image.shape[-1])]
@@ -395,17 +446,6 @@ def main():
 
     fig, ax = plt.subplots(2, 4, figsize=(16, 9))
     ax = ax.ravel()
-
-    image = image[0]
-    image = image / np.max(image, axis=(0, 1)).reshape(1, 1, -1)
-
-    for i in range(image.shape[-1]):
-        ax[i].imshow(image[:, :, i], cmap="gray")
-        ax[i].set_title(i)
-
-    ax[6].imshow(pseudo_channel, cmap="gray")
-    ax[-1].axis("off")
-    plt.show()
 
 
 if __name__ == "__main__":
