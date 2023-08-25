@@ -42,4 +42,5 @@ class SimpleCNN(nn.Module):
         x = self.dropout(x)
         x = self.fc1(x)
         x = self.sigmoid(x)
+        # x = x.max()
         return x

@@ -1,6 +1,4 @@
 import logging
-import time
-from functools import wraps
 from pathlib import Path
 
 import cv2
@@ -10,7 +8,9 @@ import pywt
 import torch
 import torchvision.transforms.functional as TF
 from network import SimpleCNN
+from tifffile import tifffile
 from tqdm import tqdm
+from utils import split_into_tiles_padding
 
 
 class Ramces:
@@ -94,6 +94,7 @@ class Ramces:
             self.model.load_state_dict(
                 torch.load(self.model_path, map_location=self.device)
             )
+            self.model = self.model.to(device)
         except RuntimeError:
             logging.warning(
                 "No %sdevice detected. Falling back to CPU.", self.device
@@ -167,6 +168,49 @@ class Ramces:
 
         return im
 
+    def preprocess_image_batch(self, im: np.array) -> np.array:
+        """
+        Preprocesses an image.
+
+        :param im:
+        :return:
+
+        :type im: np.array
+        :rtype: np.array
+
+        :raises:
+
+        Examples
+        --------
+        >>> from ramces import Ramces
+        >>> ramces = Ramces(["DAPI", "CD3", "CD8", "CD20", "CD68"])
+        >>> im = np.random.randint(0, 255, (1024, 1024))
+        >>> im_proc = ramces.preprocess_image(im)
+        >>> im_proc.shape
+        (64, 4, 128, 128)
+        """
+        # im = cv2.resize(im, dsize=(1024, 1024))
+
+        num_images = im.shape[0]
+        im_std = np.std(im)
+        im_mean = np.mean(im)
+
+        im = im - im_mean
+
+        if im_std != 0:
+            im = im / im_std
+            np.clip(im, -3, 3, out=im)
+
+        coeffs = pywt.dwt2(im, "db2")
+        ll, lh, hl, hh = coeffs[0], coeffs[1][0], coeffs[1][1], coeffs[1][2]
+        im = np.stack([ll, lh, hl, hh], axis=-1)
+        im = np.transpose(im, (0, 3, 1, 2))
+        im = torch.tensor(im, dtype=torch.float32)
+        patches = im.unfold(2, 128, 128).unfold(3, 128, 128)
+        im = patches.contiguous().view(num_images * 16, 4, 128, 128)
+
+        return im
+
     def rank_markers_multi_channel(self, im: np.array) -> None:
         """
         Ranks the markers in an image.
@@ -207,19 +251,38 @@ class Ramces:
         assert len(im.shape) == 4, "Wrong dimensions!"
         num_images, _, _, num_markers = im.shape
 
-        for marker_idx in range(num_markers):
-            for image_idx in range(num_images):
-                with torch.inference_mode():
+        with torch.inference_mode():
+            for marker_idx in range(num_markers):
+                for image_idx in range(num_images):
                     im_proc = self.preprocess_image(
                         im[image_idx, :, :, marker_idx]
                     )
-                    output = self.model(
-                        im_proc.view(-1, 4, 128, 128).type("torch.FloatTensor")
-                    )
+                    im_proc = im_proc.type("torch.FloatTensor").to(self.device)
+                    output = self.model(im_proc)
+
                     self.marker_scores_raw[marker_idx] += output.max()
-            self.marker_scores[marker_idx] = (
-                self.marker_scores_raw[marker_idx] / num_images
-            )
+                self.marker_scores[marker_idx] = (
+                    self.marker_scores_raw[marker_idx] / num_images
+                )
+
+    def rank_markers_batch(self, im: np.array) -> None:
+        assert len(im.shape) == 4, "Wrong dimensions!"
+        num_images, _, _, num_markers = im.shape
+
+        with torch.inference_mode():
+            for marker_idx in range(num_markers):
+                im_proc = self.preprocess_image_batch(im[:, :, :, marker_idx])
+                im_proc = im_proc.type("torch.FloatTensor").to(self.device)
+                output = self.model(im_proc)
+
+                reshaped_tensor = output.view(num_images, 16)
+                max_values, _ = torch.max(reshaped_tensor, 1)
+                total_sum = max_values.sum()
+
+                self.marker_scores_raw[marker_idx] += total_sum
+                self.marker_scores[marker_idx] = (
+                    self.marker_scores_raw[marker_idx] / num_images
+                )
 
     def create_pseudochannel(
         self, im: np.array, num_weighted: int = 3
@@ -246,7 +309,8 @@ class Ramces:
         (1024, 1024)
         """
         top_weights = self.marker_scores[self.top_markers[:num_weighted]]
-        top_images = im[:, :, self.top_markers[:num_weighted]]
+        # Todo: check this
+        top_images = im[:, :, :, self.top_markers[:num_weighted]]
 
         top_weights /= top_weights.sum()
         weighted_im = (top_images * top_weights).sum(axis=-1)
@@ -286,27 +350,32 @@ class Ramces:
 
 
 def main():
-    number_channels = 10
+    # path_lst = sorted(
+    #    [e for e in Path("data").iterdir() if e.suffix == ".tif"]
+    # )
+
+    """
+    stacked_tiles = np.empty((19 * 20, 1024, 1024, len(path_lst)))
+    for idx, img_path in enumerate(path_lst):
+        img = tifffile.imread(img_path)
+        tiles = split_into_tiles_padding(img, (1024, 1024), "reflect")
+        tiles = tiles.reshape(tiles.shape[0] * tiles.shape[1], 1024, 1024)
+        stacked_tiles[:, :, :, idx] = tiles
+    sub_tiles = stacked_tiles[:5]
+    """
+
     rng = np.random.default_rng(0)
-    img = rng.integers(
-        low=0, high=256, size=(1, 1024, 1024, number_channels), dtype=np.uint16
-    )
-
+    number_channels = 4
     channels = [str(i) for i in range(number_channels)]
-
-    ram_tensor = Ramces(channels=channels)
-    print(10 * "- ")
-    print("Tensor")
-    ram_tensor.rank_markers_tensor(img)
-
-    ram_multi = Ramces(channels=channels)
-    print(10 * "- ")
-    print("Multi")
-    ram_multi.rank_markers_tensor(img)
-
-    np.testing.assert_array_equal(
-        ram_tensor.ranking_table(), ram_multi.ranking_table()
+    number_tiles = 100
+    sub_tiles = rng.integers(
+        low=0, high=512, size=(number_tiles, 1024, 1024, number_channels)
     )
+
+    ram_tensor = Ramces(channels=channels, device="cpu")
+    # for i in range(number_tiles):
+    ram_tensor.rank_markers_batch(sub_tiles)
+    print(ram_tensor.ranking_table())
 
 
 if __name__ == "__main__":
@@ -314,7 +383,5 @@ if __name__ == "__main__":
 
 
 """
-  Markers    Scores
-1    CD45  0.021567
-0    DAPI  0.017818
+[Finished in 83.5s]
 """
