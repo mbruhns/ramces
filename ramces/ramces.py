@@ -11,6 +11,7 @@ from network import SimpleCNN
 from tifffile import tifffile
 from tqdm import tqdm
 from utils import split_into_tiles_padding
+import matplotlib.pyplot as plt
 
 
 class Ramces:
@@ -264,6 +265,7 @@ class Ramces:
                 self.marker_scores[marker_idx] = (
                     self.marker_scores_raw[marker_idx] / num_images
                 )
+        self.top_markers = np.argsort(self.marker_scores)[::-1]
 
     def rank_markers_batch(self, im: np.array) -> None:
         assert len(im.shape) == 4, "Wrong dimensions!"
@@ -283,6 +285,7 @@ class Ramces:
                 self.marker_scores[marker_idx] = (
                     self.marker_scores_raw[marker_idx] / num_images
                 )
+        self.top_markers = np.argsort(self.marker_scores)[::-1]
 
     def create_pseudochannel(
         self, im: np.array, num_weighted: int = 3
@@ -316,7 +319,7 @@ class Ramces:
         weighted_im = (top_images * top_weights).sum(axis=-1)
         weighted_im = np.asarray(weighted_im, dtype=im.dtype)
 
-        return weighted_im
+        return weighted_im[0]
 
     def ranking_table(self) -> pd.DataFrame:
         """
@@ -364,6 +367,18 @@ def main():
     sub_tiles = stacked_tiles[:5]
     """
 
+    image = tifffile.imread(
+        "/Users/matthias/github/segError/data/manual_seg/CRC_Day_4_R1_WC_ROI2_all_markers.ome_4700_5700_4400_5400.ome.tif"
+    )
+    image = np.moveaxis(image, 0, -1)
+
+    image = np.pad(
+        image, pad_width=((12, 12), (12, 12), (0, 0)), mode="reflect"
+    )
+
+    image = np.expand_dims(image, axis=0)
+    channels = [str(i) for i in range(image.shape[-1])]
+    """
     rng = np.random.default_rng(0)
     number_channels = 4
     channels = [str(i) for i in range(number_channels)]
@@ -371,11 +386,26 @@ def main():
     sub_tiles = rng.integers(
         low=0, high=512, size=(number_tiles, 1024, 1024, number_channels)
     )
-
-    ram_tensor = Ramces(channels=channels, device="cpu")
-    # for i in range(number_tiles):
-    ram_tensor.rank_markers_batch(sub_tiles)
+    """
+    ram_tensor = Ramces(channels=channels, device="mps")
+    ram_tensor.rank_markers_batch(image)
     print(ram_tensor.ranking_table())
+
+    pseudo_channel = ram_tensor.create_pseudochannel(image, 3)
+
+    fig, ax = plt.subplots(2, 4, figsize=(16, 9))
+    ax = ax.ravel()
+
+    image = image[0]
+    image = image / np.max(image, axis=(0, 1)).reshape(1, 1, -1)
+
+    for i in range(image.shape[-1]):
+        ax[i].imshow(image[:, :, i], cmap="gray")
+        ax[i].set_title(i)
+
+    ax[6].imshow(pseudo_channel, cmap="gray")
+    ax[-1].axis("off")
+    plt.show()
 
 
 if __name__ == "__main__":
