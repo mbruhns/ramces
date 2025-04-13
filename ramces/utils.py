@@ -81,7 +81,6 @@ def main():
     image_shape = tifffile.imread(file_paths[0], key=0).shape
     result_array = np.empty((len(file_paths),) + image_shape)
 
-    images = []
     parallel = False
 
     if parallel:
@@ -96,7 +95,8 @@ def main():
                 future.result()
 
     else:
-        for idx, img_path in enumerate(file_paths):
+        images = []
+        for img_path in file_paths:
             obj = load_tif(img_path)
             print("Single size", obj.nbytes / 1024**2)
             images.append(obj)
