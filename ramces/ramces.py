@@ -10,7 +10,6 @@ import torchvision.transforms.functional as TF
 from network import SimpleCNN
 from tifffile import tifffile
 from tqdm import tqdm
-from utils import split_into_tiles_padding
 import matplotlib.pyplot as plt
 
 
@@ -97,9 +96,7 @@ class Ramces:
             )
             self.model = self.model.to(device)
         except RuntimeError:
-            logging.warning(
-                "No %sdevice detected. Falling back to CPU.", self.device
-            )
+            logging.warning("No %sdevice detected. Falling back to CPU.", self.device)
             self.device = "cpu"
             self.model.load_state_dict(
                 torch.load(self.model_path, map_location=self.device)
@@ -121,9 +118,7 @@ class Ramces:
         Returns a string representation of the class.
         """
         channel_str = "channels: " + ", ".join(self.channels)
-        return (
-            f"- - - - - - \nRamces model\n{channel_str},\ndevice={self.device}"
-        )
+        return f"- - - - - - \nRamces model\n{channel_str},\ndevice={self.device}"
 
     def preprocess_image(self, im: np.array) -> np.array:
         """
@@ -255,9 +250,7 @@ class Ramces:
         with torch.inference_mode():
             for marker_idx in range(num_markers):
                 for image_idx in range(num_images):
-                    im_proc = self.preprocess_image(
-                        im[image_idx, :, :, marker_idx]
-                    )
+                    im_proc = self.preprocess_image(im[image_idx, :, :, marker_idx])
                     im_proc = im_proc.type("torch.FloatTensor").to(self.device)
                     output = self.model(im_proc)
 
@@ -347,9 +340,7 @@ class Ramces:
         3       CD20  0.999999
         4       CD68  0.999999
         """
-        df = pd.DataFrame(
-            {"Markers": self.channels, "Scores": self.marker_scores}
-        )
+        df = pd.DataFrame({"Markers": self.channels, "Scores": self.marker_scores})
 
         df = df.sort_values(by="Scores", ascending=False)
         return df

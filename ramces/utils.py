@@ -2,7 +2,6 @@ from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 import numpy as np
-import psutil
 from tifffile import tifffile
 
 
@@ -86,9 +85,7 @@ def main():
     if parallel:
         with ThreadPoolExecutor() as executor:
             futures = [
-                executor.submit(
-                    load_tif_to_array, result_array, file_path, index
-                )
+                executor.submit(load_tif_to_array, result_array, file_path, index)
                 for index, file_path in enumerate(file_paths)
             ]
             for future in futures:
